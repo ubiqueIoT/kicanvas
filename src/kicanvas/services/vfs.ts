@@ -16,7 +16,7 @@ import { basename } from "../../base/paths";
  */
 export abstract class VirtualFileSystem {
     public abstract list(): Generator<string>;
-    public abstract get(name: string): Promise<File>;
+    public abstract get(name: string): Promise<File | null>;
     public abstract has(name: string): Promise<boolean>;
     public abstract download(name: string): Promise<void>;
 
@@ -89,20 +89,18 @@ export class FetchFileSystem extends VirtualFileSystem {
         return Promise.resolve(this.urls.has(name));
     }
 
-    public override async get(name: string): Promise<File> {
+    public override async get(name: string): Promise<File | null> {
         const url = this.#resolve(name);
 
         if (!url) {
-            throw new Error(`File ${name} not found!`);
+            return null;
         }
 
         const request = new Request(url, { method: "GET" });
         const response = await fetch(request);
 
         if (!response.ok) {
-            throw new Error(
-                `Unable to load ${url}: ${response.status} ${response.statusText}`,
-            );
+            return null;
         }
 
         const blob = await response.blob();
@@ -111,7 +109,10 @@ export class FetchFileSystem extends VirtualFileSystem {
     }
 
     public async download(name: string) {
-        initiate_download(await this.get(name));
+        const file = await this.get(name);
+        if (file) {
+            initiate_download(file);
+        }
     }
 }
 
@@ -175,7 +176,7 @@ export class DragAndDropFileSystem extends VirtualFileSystem {
         return false;
     }
 
-    public override async get(name: string): Promise<File> {
+    public override async get(name: string): Promise<File | null> {
         let file_entry: FileSystemFileEntry | null = null;
         for (const entry of this.items) {
             if (entry.name == name) {
@@ -185,7 +186,7 @@ export class DragAndDropFileSystem extends VirtualFileSystem {
         }
 
         if (file_entry == null) {
-            throw new Error(`File ${name} not found!`);
+            return null;
         }
 
         return await new Promise((resolve, reject) => {
@@ -194,7 +195,10 @@ export class DragAndDropFileSystem extends VirtualFileSystem {
     }
 
     public async download(name: string) {
-        initiate_download(await this.get(name));
+        const file = await this.get(name);
+        if (file) {
+            initiate_download(file);
+        }
     }
 }
 
@@ -216,17 +220,20 @@ export class LocalFileSystem extends VirtualFileSystem {
         return this.files.find((f) => f.name == name) !== undefined;
     }
 
-    override async get(name: string): Promise<File> {
+    override async get(name: string): Promise<File | null> {
         const file = this.files.find((f) => f.name == name);
         if (file) {
             return file;
         } else {
-            throw new Error(`File ${name} not found`);
+            return null;
         }
     }
 
     override async download(name: string) {
-        initiate_download(await this.get(name));
+        const file = await this.get(name);
+        if (file) {
+            initiate_download(file);
+        }
     }
 }
 
@@ -257,14 +264,14 @@ export class MergedFileSystem extends VirtualFileSystem {
         return false;
     }
 
-    override async get(name: string): Promise<File> {
+    override async get(name: string): Promise<File | null> {
         for (const fs of this.fs_list) {
             if (await fs.has(name)) {
                 return await fs.get(name);
             }
         }
 
-        throw new Error(`File ${name} not found`);
+        return null;
     }
 
     override async download(name: string) {
@@ -273,7 +280,5 @@ export class MergedFileSystem extends VirtualFileSystem {
                 return await fs.download(name);
             }
         }
-
-        throw new Error(`File ${name} not found`);
     }
 }

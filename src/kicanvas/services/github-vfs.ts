@@ -88,11 +88,11 @@ export class GitHubFileSystem extends VirtualFileSystem {
         yield* this.files_to_urls.keys();
     }
 
-    public override get(name: string): Promise<File> {
+    public override get(name: string): Promise<File | null> {
         const url = this.files_to_urls.get(name);
 
         if (!url) {
-            throw new Error(`File ${name} not found!`);
+            return Promise.resolve(null);
         }
 
         return gh_user_content.get(url);
@@ -107,6 +107,9 @@ export class GitHubFileSystem extends VirtualFileSystem {
         // tag method used by initiate_download() only works for same-origin
         // or data: urls, so this actually fetch()s the file and then initiates
         // the download.
-        initiate_download(await this.get(name));
+        const file = await this.get(name);
+        if (file) {
+            initiate_download(file);
+        }
     }
 }

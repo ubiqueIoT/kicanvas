@@ -22,6 +22,7 @@ const log = new Logger("kicanvas:project");
 export class Project extends EventTarget implements IDisposable {
     #fs: VirtualFileSystem;
     #files_by_name: Map<string, KicadPCB | KicadSch | null> = new Map();
+    #attempted_files: Set<string> = new Set();
     #pages_by_path: Map<string, ProjectPage> = new Map();
     #root_schematic_page?: ProjectPage;
 
@@ -38,6 +39,7 @@ export class Project extends EventTarget implements IDisposable {
 
         this.settings = new ProjectSettings();
         this.#files_by_name.clear();
+        this.#attempted_files.clear();
         this.#pages_by_path.clear();
 
         this.#fs = fs;
@@ -55,14 +57,18 @@ export class Project extends EventTarget implements IDisposable {
             promises = [];
             for (const schematic of this.schematics()) {
                 for (const sheet of schematic.sheets) {
-                    const sheet_sch = this.#files_by_name.get(
-                        sheet.sheetfile ?? "",
-                    ) as KicadSch;
-
-                    if (!sheet_sch && sheet.sheetfile) {
-                        // Missing schematic, attempt to fetch
-                        promises.push(this.#load_file(sheet.sheetfile));
+                    if (!sheet.sheetfile) {
+                        continue;
                     }
+
+                    const filename = sheet.sheetfile;
+                    // Skip if we've already tried to load this file (whether successful or not)
+                    if (this.#attempted_files.has(filename)) {
+                        continue;
+                    }
+
+                    // Missing schematic, attempt to fetch
+                    promises.push(this.#load_file(filename));
                 }
             }
             await Promise.all(promises);
@@ -80,6 +86,12 @@ export class Project extends EventTarget implements IDisposable {
     }
 
     async #load_file(filename: string) {
+        // Mark as attempted immediately to prevent retry loops
+        if (this.#attempted_files.has(filename)) {
+            return this.#files_by_name.get(filename) ?? null;
+        }
+        this.#attempted_files.add(filename);
+
         log.info(`Loading file ${filename}`);
 
         if (filename.endsWith(".kicad_sch")) {
@@ -93,17 +105,25 @@ export class Project extends EventTarget implements IDisposable {
         }
 
         log.warn(`Couldn't load ${filename}: unknown file type`);
+        return null;
     }
 
     async #load_doc(
         document_class: Constructor<KicadPCB | KicadSch>,
         filename: string,
     ) {
+        // Note: #load_file already marks this as attempted, but check here too for safety
         if (this.#files_by_name.has(filename)) {
             return this.#files_by_name.get(filename);
         }
 
         const text = await this.#get_file_text(filename);
+        if (!text) {
+            // File not found, mark it as null in the map to avoid retrying
+            this.#files_by_name.set(filename, null);
+            return null;
+        }
+
         const doc = new document_class(filename, text);
         doc.project = this;
 
@@ -127,13 +147,23 @@ export class Project extends EventTarget implements IDisposable {
     }
 
     async #load_meta(filename: string) {
+        // Note: #load_file already marks this as attempted
         const text = await this.#get_file_text(filename);
+        if (!text) {
+            // File not found, skip loading metadata (already marked as attempted)
+            return;
+        }
         const data = JSON.parse(text);
         this.settings = ProjectSettings.load(data);
     }
 
-    async #get_file_text(filename: string) {
-        return await (await this.#fs.get(filename)).text();
+    async #get_file_text(filename: string): Promise<string | null> {
+        const file = await this.#fs.get(filename);
+        if (!file) {
+            log.warn(`File ${filename} not found`);
+            return null;
+        }
+        return await file.text();
     }
 
     #determine_schematic_hierarchy() {
