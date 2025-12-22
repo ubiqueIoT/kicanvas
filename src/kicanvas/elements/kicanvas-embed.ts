@@ -86,7 +86,17 @@ class KiCanvasEmbedElement extends KCUIElement {
     @attribute({ type: String })
     controlslist: string | null;
 
-    @attribute({ type: String })
+    @attribute({
+        type: String,
+        on_change: function (this: KiCanvasEmbedElement, old, new_value) {
+            if (this.#schematic_app) {
+                this.#schematic_app.theme = new_value as string | null;
+            }
+            if (this.#board_app) {
+                this.#board_app.theme = new_value as string | null;
+            }
+        },
+    })
     theme: string | null;
 
     @attribute({ type: String })
@@ -184,7 +194,8 @@ class KiCanvasEmbedElement extends KCUIElement {
             this.#schematic_app = html`<kc-schematic-app
                 sidebarcollapsed
                 controls="${this.controls}"
-                controlslist="${this.controlslist}">
+                controlslist="${this.controlslist}"
+                theme="${this.theme}">
             </kc-schematic-app>` as KCSchematicAppElement;
         }
 
@@ -192,7 +203,8 @@ class KiCanvasEmbedElement extends KCUIElement {
             this.#board_app = html`<kc-board-app
                 sidebarcollapsed
                 controls="${this.controls}"
-                controlslist="${this.controlslist}">
+                controlslist="${this.controlslist}"
+                theme="${this.theme}">
             </kc-board-app>` as KCBoardAppElement;
         }
 

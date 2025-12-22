@@ -32,6 +32,7 @@ interface ViewerElement extends HTMLElement {
     viewer: Viewer;
     load(src: ProjectPage): Promise<void>;
     disableinteraction: boolean;
+    theme: string | null;
 }
 
 /**
@@ -63,6 +64,20 @@ export abstract class KCViewerAppElement<
 
     @attribute({ type: Boolean })
     sidebarcollapsed: boolean;
+
+    @attribute({
+        type: String,
+        on_change: function (
+            this: KCViewerAppElement<ViewerElementT>,
+            old,
+            new_value,
+        ) {
+            if (this.#viewer_elm) {
+                this.#viewer_elm.theme = new_value as string | null;
+            }
+        },
+    })
+    theme: string | null;
 
     override connectedCallback() {
         this.hidden = true;
@@ -196,6 +211,9 @@ export abstract class KCViewerAppElement<
 
         this.#viewer_elm = this.make_viewer_element();
         this.#viewer_elm.disableinteraction = controls == "none";
+        if (this.theme) {
+            this.#viewer_elm.theme = this.theme;
+        }
 
         let resizer = null;
 

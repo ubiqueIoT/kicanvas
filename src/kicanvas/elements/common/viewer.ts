@@ -25,7 +25,16 @@ export abstract class KCViewerElement<
     @attribute({ type: Boolean })
     loaded: boolean;
 
-    @attribute({ type: String })
+    @attribute({
+        type: String,
+        on_change: function (this: KCViewerElement<ViewerT>, old, new_value) {
+            if (this.viewer && this.loaded) {
+                this.update_theme();
+                this.viewer.paint();
+                this.viewer.draw();
+            }
+        },
+    })
     theme: string;
 
     @attribute({ type: Boolean })
